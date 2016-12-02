@@ -18,20 +18,32 @@ import io.shockah.UnexpectedException;
 import io.shockah.json.JSONObject;
 import io.shockah.json.JSONParser;
 
-public class PluginManager {
+public class PluginManager<T extends Plugin<T>> {
 	public static final Path LIBS_PATH = Paths.get("libs");
-	public static final Path PLUGIN_PATH = Paths.get("plugins");
+	public static final Path PLUGINS_PATH = Paths.get("plugins");
+	
+	protected final Path pluginsPath;
+	protected final Path libsPath;
 	
 	public ClassLoader pluginClassLoader = null;
 	public ReadWriteList<Plugin.Info> pluginInfos = new ReadWriteList<>(new ArrayList<>());
-	public ReadWriteList<Plugin> plugins = new ReadWriteList<>(new ArrayList<>());
+	public ReadWriteList<T> plugins = new ReadWriteList<>(new ArrayList<>());
 	
-	public Path getLibsPath() {
-		return LIBS_PATH;
+	public PluginManager() {
+		this(PLUGINS_PATH, LIBS_PATH);
+	}
+	
+	public PluginManager(Path pluginsPath, Path libsPath) {
+		this.pluginsPath = pluginsPath;
+		this.libsPath = libsPath;
 	}
 	
 	public Path getPluginPath() {
-		return PLUGIN_PATH;
+		return pluginsPath;
+	}
+	
+	public Path getLibsPath() {
+		return libsPath;
 	}
 	
 	public void reload() {
@@ -58,7 +70,7 @@ public class PluginManager {
 		
 		pluginInfos.iterate(pluginInfo -> {
 			if (shouldEnable(pluginInfo)) {
-				Plugin plugin = loadPlugin(pluginClassLoader, pluginInfo);
+				T plugin = loadPlugin(pluginClassLoader, pluginInfo);
 				if (plugin != null) {
 					try {
 						setupRequiredDependencyFields(plugin);
@@ -82,19 +94,20 @@ public class PluginManager {
 		});
 	}
 	
-	protected void onPluginLoad(Plugin plugin) {
+	protected void onPluginLoad(T plugin) {
 		System.out.println(String.format("Loaded plugin: %s", plugin.info.packageName()));
 	}
 	
-	protected void onPluginUnload(Plugin plugin) {
+	protected void onPluginUnload(T plugin) {
 		System.out.println(String.format("Unloaded plugin: %s", plugin.info.packageName()));
 	}
 	
-	protected Plugin loadPlugin(ClassLoader classLoader, Plugin.Info info) {
+	@SuppressWarnings("unchecked")
+	protected T loadPlugin(ClassLoader classLoader, Plugin.Info info) {
 		try {
 			Class<?> clazz = classLoader.loadClass(info.baseClass());
 			Constructor<?> ctor = clazz.getConstructor(PluginManager.class, Plugin.Info.class);
-			return (Plugin)ctor.newInstance(this, info);
+			return (T)ctor.newInstance(this, info);
 		} catch (Exception e) {
 			e.printStackTrace();
 			return null;
@@ -102,16 +115,16 @@ public class PluginManager {
 	}
 	
 	@SuppressWarnings("unchecked")
-	protected void setupRequiredDependencyFields(Plugin plugin) {
+	protected void setupRequiredDependencyFields(T plugin) {
 		for (Field field : plugin.getClass().getDeclaredFields()) {
 			try {
 				Plugin.Dependency dependencyAnnotation = field.getAnnotation(Plugin.Dependency.class);
 				if (dependencyAnnotation != null) {
 					if (dependencyAnnotation.value().equals("")) {
-						Class<? extends Plugin> clazz = (Class<? extends Plugin>)field.getType();
+						Class<? extends T> clazz = (Class<? extends T>)field.getType();
 						if (clazz == Plugin.class)
 							continue;
-						Plugin dependency = getPluginWithClass(clazz);
+						T dependency = getPluginWithClass(clazz);
 						if (dependency != null) {
 							field.setAccessible(true);
 							field.set(plugin, dependency);
@@ -125,13 +138,13 @@ public class PluginManager {
 		}
 	}
 	
-	protected void setupOptionalDependencyFields(Plugin plugin) {
+	protected void setupOptionalDependencyFields(T plugin) {
 		for (Field field : plugin.getClass().getDeclaredFields()) {
 			try {
 				Plugin.Dependency dependencyAnnotation = field.getAnnotation(Plugin.Dependency.class);
 				if (dependencyAnnotation != null) {
 					if (!dependencyAnnotation.value().equals("")) {
-						Plugin dependency = getPluginWithPackageName(dependencyAnnotation.value());
+						T dependency = getPluginWithPackageName(dependencyAnnotation.value());
 						if (dependency != null) {
 							field.setAccessible(true);
 							field.set(plugin, dependency);
@@ -145,56 +158,14 @@ public class PluginManager {
 		}
 	}
 	
-	/*protected void setupServices(Plugin plugin) {
-		if (plugin instanceof BotManagerService.Factory) {
-			BotManagerService.Factory factory = (BotManagerService.Factory)plugin;
-			botManagerServiceFactories.add(factory);
-			
-			ServerManager serverManager = app.serverManager;
-			serverManager.botManagers.iterate(botManager -> {
-				BotManagerService service = factory.createService(botManager);
-				botManager.services.add(service);
-				botManagerServices.add(service);
-			});
-		}
-		if (plugin instanceof BotService.Factory) {
-			BotService.Factory factory = (BotService.Factory)plugin;
-			botServiceFactories.add(factory);
-			
-			ServerManager serverManager = app.serverManager;
-			serverManager.botManagers.iterate(botManager -> {
-				botManager.bots.iterate(bot -> {
-					BotService service = factory.createService(bot);
-					bot.services.add(service);
-					botServices.add(service);
-				});
-			});
-		}
-	}
-	
-	protected void clearServices() {
-		ServerManager serverManager = app.serverManager;
-		serverManager.botManagers.iterate(botManager -> {
-			botManager.services.clear();
-			botManager.bots.iterate(bot -> {
-				bot.services.clear();
-			});
-		});
-		
-		botManagerServiceFactories.clear();
-		botManagerServices.clear();
-		botServiceFactories.clear();
-		botServices.clear();
-	}*/
-	
 	@SuppressWarnings("unchecked")
-	public <T extends Plugin> T getPluginWithClass(Class<T> clazz) {
-		return (T)plugins.filterFirst(plugin -> clazz.isInstance(plugin));
+	public <P extends T> P getPluginWithClass(Class<P> clazz) {
+		return (P)plugins.filterFirst(plugin -> clazz.isInstance(plugin));
 	}
 	
 	@SuppressWarnings("unchecked")
-	public <T extends Plugin> T getPluginWithPackageName(String name) {
-		return (T)plugins.filterFirst(plugin -> plugin.info.packageName().equals(name));
+	public <P extends T> P getPluginWithPackageName(String name) {
+		return (P)plugins.filterFirst(plugin -> plugin.info.packageName().equals(name));
 	}
 	
 	protected List<Plugin.Info> findPlugins() {

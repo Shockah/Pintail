@@ -9,11 +9,11 @@ import java.util.Collections;
 import java.util.List;
 import io.shockah.json.JSONObject;
 
-public class Plugin {
-	public final PluginManager manager;
+public class Plugin<T extends Plugin<T>> {
+	public final PluginManager<T> manager;
 	public final Info info;
 	
-	public Plugin(PluginManager manager, Info info) {
+	public Plugin(PluginManager<T> manager, Info info) {
 		this.manager = manager;
 		this.info = info;
 	}
@@ -24,10 +24,10 @@ public class Plugin {
 	protected void onUnload() {
 	}
 	
-	protected void onDependencyLoaded(Plugin plugin) {
+	protected void onDependencyLoaded(T plugin) {
 	}
 	
-	protected void onDependencyUnloaded(Plugin plugin) {
+	protected void onDependencyUnloaded(T plugin) {
 	}
 	
 	protected void onAllPluginsLoaded() {
