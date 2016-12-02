@@ -159,8 +159,18 @@ public class PluginManager<T extends Plugin<T>> {
 	}
 	
 	@SuppressWarnings("unchecked")
-	public <P extends T> P getPluginWithClass(Class<P> clazz) {
+	public <P> P getPluginWithClass(Class<P> clazz) {
 		return (P)plugins.filterFirst(plugin -> clazz.isInstance(plugin));
+	}
+	
+	@SuppressWarnings("unchecked")
+	public <P> List<P> getPluginsWithClass(Class<P> clazz) {
+		List<P> ret = new ArrayList<>();
+		plugins.iterate(plugin -> {
+			if (clazz.isInstance(plugin))
+				ret.add((P)plugin);
+		});
+		return ret;
 	}
 	
 	@SuppressWarnings("unchecked")
