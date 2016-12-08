@@ -12,11 +12,11 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.apache.commons.io.IOUtils;
-import io.shockah.FileUtils;
-import io.shockah.ReadWriteList;
-import io.shockah.UnexpectedException;
 import io.shockah.json.JSONObject;
 import io.shockah.json.JSONParser;
+import io.shockah.util.FileUtils;
+import io.shockah.util.ReadWriteList;
+import io.shockah.util.UnexpectedException;
 
 public class PluginManager<T extends Plugin<T>> {
 	public static final Path LIBS_PATH = Paths.get("libs");
