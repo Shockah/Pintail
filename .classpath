@@ -6,6 +6,6 @@
 	<classpathentry exported="true" kind="lib" path="libs/commons-codec-1.9.jar"/>
 	<classpathentry exported="true" kind="lib" path="libs/commons-io-2.4.jar"/>
 	<classpathentry exported="true" kind="lib" path="libs/commons-lang3-3.2.1.jar"/>
-	<classpathentry combineaccessrules="false" kind="src" path="/io.shockah.util"/>
+	<classpathentry combineaccessrules="false" exported="true" kind="src" path="/io.shockah.util"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
