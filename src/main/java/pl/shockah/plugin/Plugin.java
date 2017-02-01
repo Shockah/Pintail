@@ -1,4 +1,4 @@
-package io.shockah.plugin;
+package pl.shockah.plugin;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -7,7 +7,7 @@ import java.lang.annotation.Target;
 import java.net.URL;
 import java.util.Collections;
 import java.util.List;
-import io.shockah.json.JSONObject;
+import pl.shockah.json.JSONObject;
 
 public class Plugin<T extends Plugin<T>> {
 	public final PluginManager<T> manager;

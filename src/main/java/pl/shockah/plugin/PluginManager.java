@@ -1,4 +1,4 @@
-package io.shockah.plugin;
+package pl.shockah.plugin;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -12,16 +12,17 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.apache.commons.io.IOUtils;
-import io.shockah.json.JSONObject;
-import io.shockah.json.JSONParser;
-import io.shockah.util.FileUtils;
-import io.shockah.util.ReadWriteList;
-import io.shockah.util.UnexpectedException;
+import pl.shockah.json.JSONObject;
+import pl.shockah.json.JSONParser;
+import pl.shockah.util.FileUtils;
+import pl.shockah.util.ReadWriteList;
+import pl.shockah.util.UnexpectedException;
 
 public class PluginManager<T extends Plugin<T>> {
 	public static final Path LIBS_PATH = Paths.get("libs");
 	public static final Path PLUGINS_PATH = Paths.get("plugins");
 	
+	protected final Class<T> clazz;
 	protected final Path pluginsPath;
 	protected final Path libsPath;
 	
@@ -29,11 +30,12 @@ public class PluginManager<T extends Plugin<T>> {
 	public ReadWriteList<Plugin.Info> pluginInfos = new ReadWriteList<>(new ArrayList<>());
 	public ReadWriteList<T> plugins = new ReadWriteList<>(new ArrayList<>());
 	
-	public PluginManager() {
-		this(PLUGINS_PATH, LIBS_PATH);
+	public PluginManager(Class<T> clazz) {
+		this(clazz, PLUGINS_PATH, LIBS_PATH);
 	}
 	
-	public PluginManager(Path pluginsPath, Path libsPath) {
+	public PluginManager(Class<T> clazz, Path pluginsPath, Path libsPath) {
+		this.clazz = clazz;
 		this.pluginsPath = pluginsPath;
 		this.libsPath = libsPath;
 	}
@@ -122,7 +124,7 @@ public class PluginManager<T extends Plugin<T>> {
 				if (dependencyAnnotation != null) {
 					if (dependencyAnnotation.value().equals("")) {
 						Class<? extends T> clazz = (Class<? extends T>)field.getType();
-						if (clazz == Plugin.class)
+						if (clazz == this.clazz)
 							continue;
 						T dependency = getPluginWithClass(clazz);
 						if (dependency != null) {

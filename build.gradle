@@ -1,0 +1,16 @@
+apply plugin: 'java'
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+repositories {
+	jcenter()
+	maven {
+		url 'https://jitpack.io'
+	}
+}
+
+dependencies {
+	compile group: 'commons-io', name: 'commons-io', version: '2.5'
+	compile 'com.github.Shockah:pl.shockah.json:master-SNAPSHOT'
+}
