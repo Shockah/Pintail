@@ -79,7 +79,6 @@ public class PluginManager<T extends Plugin<T>> {
 						plugin.onLoad();
 						plugins.add(plugin);
 						onPluginLoad(plugin);
-						System.out.println(String.format("Loaded plugin: %s", pluginInfo.packageName()));
 					} catch (Exception e) {
 						throw new UnexpectedException(e);
 					}
