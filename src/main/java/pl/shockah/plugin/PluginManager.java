@@ -108,8 +108,13 @@ public class PluginManager<T extends Plugin<T>> {
 	protected T loadPlugin(ClassLoader classLoader, Plugin.Info info) {
 		try {
 			Class<?> clazz = classLoader.loadClass(info.baseClass());
-			Constructor<?> ctor = clazz.getConstructor(PluginManager.class, Plugin.Info.class);
-			return (T)ctor.newInstance(this, info);
+			for (Constructor<?> ctor : clazz.getConstructors()) {
+				Class<?>[] params = ctor.getParameterTypes();
+				if (params.length == 2 && getClass().isAssignableFrom(params[0]) && params[1] == Plugin.Info.class) {
+					return (T)ctor.newInstance(this, info);
+				}
+			}
+			throw new NoSuchMethodException("Missing plugin constructor.");
 		} catch (Exception e) {
 			e.printStackTrace();
 			return null;
