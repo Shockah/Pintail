@@ -8,8 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.ListIterator;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.apache.commons.io.IOUtils;
@@ -56,9 +56,9 @@ public class PluginManager<M extends PluginManager<M, P>, P extends Plugin<M, P>
 	
 	protected void unload() {
 		plugins.readOperation(plugins -> {
-			ListIterator<P> it = plugins.listIterator();
-			while (it.hasPrevious()) {
-				P plugin = it.previous();
+			List<P> reversed = new ArrayList<>(plugins);
+			Collections.reverse(reversed);
+			for (P plugin : reversed) {
 				plugin.onUnload();
 				onPluginUnload(plugin);
 			}
