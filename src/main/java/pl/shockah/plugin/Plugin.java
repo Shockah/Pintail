@@ -59,7 +59,7 @@ public class Plugin<M extends PluginManager<M, P>, P extends Plugin<M, P>> {
 		}
 		
 		public String name() {
-			return json.containsKey("name") ? json.getString("name") : packageName();
+			return json.getString("name", packageName());
 		}
 		
 		public String author() {
@@ -69,11 +69,21 @@ public class Plugin<M extends PluginManager<M, P>, P extends Plugin<M, P>> {
 		public String description() {
 			return json.getString("description", null);
 		}
+		
+		public String classLoader() {
+			return json.getString("classLoader", "default");
+		}
 	}
 	
 	@Retention(RetentionPolicy.RUNTIME)
 	@Target(ElementType.FIELD)
 	public static @interface Dependency {
 		public String value() default "";
+	}
+	
+	@Retention(RetentionPolicy.RUNTIME)
+	@Target(ElementType.METHOD)
+	public static @interface ClassLoaderProvider {
+		public String value();
 	}
 }

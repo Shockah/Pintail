@@ -2,6 +2,8 @@ package pl.shockah.plugin;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
@@ -9,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -17,7 +20,9 @@ import pl.shockah.json.JSONObject;
 import pl.shockah.json.JSONParser;
 import pl.shockah.util.FileUtils;
 import pl.shockah.util.ReadWriteList;
+import pl.shockah.util.ReadWriteMap;
 import pl.shockah.util.UnexpectedException;
+import pl.shockah.util.func.Func2;
 
 public class PluginManager<M extends PluginManager<M, P>, P extends Plugin<M, P>> {
 	public static final Path LIBS_PATH = Paths.get("libs");
@@ -30,6 +35,9 @@ public class PluginManager<M extends PluginManager<M, P>, P extends Plugin<M, P>
 	public ClassLoader pluginClassLoader = null;
 	public ReadWriteList<Plugin.Info> pluginInfos = new ReadWriteList<>(new ArrayList<>());
 	public ReadWriteList<P> plugins = new ReadWriteList<>(new ArrayList<>());
+	
+	protected ReadWriteMap<String, Func2<ClassLoader, URL[], URLClassLoader>> customClassLoaderProviders = new ReadWriteMap<>(new HashMap<>());
+	protected ReadWriteMap<String, URLClassLoader> customClassLoaders = new ReadWriteMap<>(new HashMap<>());
 	
 	public PluginManager(Class<P> clazz) {
 		this(clazz, PLUGINS_PATH, LIBS_PATH);
@@ -63,6 +71,8 @@ public class PluginManager<M extends PluginManager<M, P>, P extends Plugin<M, P>
 				onPluginUnload(plugin);
 			}
 		});
+		customClassLoaders.clear();
+		customClassLoaderProviders.clear();
 		plugins.clear();
 		pluginInfos.clear();
 		
@@ -80,6 +90,7 @@ public class PluginManager<M extends PluginManager<M, P>, P extends Plugin<M, P>
 				P plugin = loadPlugin(pluginClassLoader, pluginInfo);
 				if (plugin != null) {
 					try {
+						setupClassLoaderProviders(plugin);
 						setupRequiredDependencyFields(plugin);
 						plugin.onLoad();
 						plugins.add(plugin);
@@ -111,7 +122,15 @@ public class PluginManager<M extends PluginManager<M, P>, P extends Plugin<M, P>
 	@SuppressWarnings("unchecked")
 	protected P loadPlugin(ClassLoader classLoader, Plugin.Info info) {
 		try {
-			Class<?> clazz = classLoader.loadClass(info.baseClass());
+			ClassLoader cl = classLoader;
+			String infoClassLoader = info.classLoader();
+			if (!infoClassLoader.equals("default")) {
+				customClassLoaders.computeIfAbsent(infoClassLoader, key -> {
+					return customClassLoaderProviders.get(key).call(cl, createURLArray(pluginInfos));
+				});
+			}
+			
+			Class<?> clazz = cl.loadClass(info.baseClass());
 			for (Constructor<?> ctor : clazz.getConstructors()) {
 				Class<?>[] params = ctor.getParameterTypes();
 				if (params.length == 2 && getClass().isAssignableFrom(params[0]) && params[1] == Plugin.Info.class) {
@@ -122,6 +141,25 @@ public class PluginManager<M extends PluginManager<M, P>, P extends Plugin<M, P>
 		} catch (Exception e) {
 			e.printStackTrace();
 			return null;
+		}
+	}
+	
+	protected void setupClassLoaderProviders(P plugin) {
+		for (Method method : plugin.getClass().getDeclaredMethods()) {
+			try {
+				Plugin.ClassLoaderProvider classLoaderProviderAnnotation = method.getAnnotation(Plugin.ClassLoaderProvider.class);
+				if (classLoaderProviderAnnotation != null) {
+					customClassLoaderProviders.put(classLoaderProviderAnnotation.value(), (cl, urls) -> {
+						try {
+							return (URLClassLoader)method.invoke(plugin, cl, urls);
+						} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+							throw new UnexpectedException(e);
+						}
+					});
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
 		}
 	}
 	
@@ -248,7 +286,7 @@ public class PluginManager<M extends PluginManager<M, P>, P extends Plugin<M, P>
 		return output;
 	}
 	
-	protected ClassLoader createClassLoader(ReadWriteList<Plugin.Info> infos) {
+	protected URL[] createURLArray(ReadWriteList<Plugin.Info> infos) {
 		List<URL> urls = new ArrayList<>();
 		try {
 			for (Path path : Files.newDirectoryStream(getLibsPath(), path -> path.getFileName().toString().endsWith(".jar"))) {
@@ -259,7 +297,11 @@ public class PluginManager<M extends PluginManager<M, P>, P extends Plugin<M, P>
 			throw new UnexpectedException(e);
 		}
 		infos.iterate(info -> urls.add(info.url));
-		return new URLClassLoader(urls.toArray(new URL[0]));
+		return urls.toArray(new URL[0]);
+	}
+	
+	protected ClassLoader createClassLoader(ReadWriteList<Plugin.Info> infos) {
+		return new URLClassLoader(createURLArray(infos));
 	}
 	
 	protected boolean shouldEnable(Plugin.Info info) {
