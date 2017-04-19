@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.apache.commons.io.IOUtils;
@@ -54,9 +55,13 @@ public class PluginManager<M extends PluginManager<M, P>, P extends Plugin<M, P>
 	}
 	
 	protected void unload() {
-		plugins.iterate(plugin -> {
-			plugin.onUnload();
-			onPluginUnload(plugin);
+		plugins.readOperation(plugins -> {
+			ListIterator<P> it = plugins.listIterator();
+			while (it.hasPrevious()) {
+				P plugin = it.previous();
+				plugin.onUnload();
+				onPluginUnload(plugin);
+			}
 		});
 		plugins.clear();
 		pluginInfos.clear();
