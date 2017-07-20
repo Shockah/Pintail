@@ -53,58 +53,111 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		return pluginsPath;
 	}
 	
-	public void reload() {
-		unload();
-		load();
+	public void reloadAll() {
+		unloadAll();
+		loadAll();
 	}
 	
-	protected void unload() {
-		plugins.readOperation(plugins -> {
+	protected void unloadAll() {
+		plugins.writeOperation(plugins -> {
 			List<P> reversed = new ArrayList<>(plugins);
 			Collections.reverse(reversed);
 			for (P plugin : reversed) {
-				plugin.onUnload();
-				onPluginUnload(plugin);
+				unloadInternal(plugin);
 			}
+
+			customClassLoaders.clear();
+			customClassLoaderProviders.clear();
+			plugins.clear();
+			pluginInfos.clear();
+			pluginClassLoader = null;
 		});
-		customClassLoaders.clear();
-		customClassLoaderProviders.clear();
-		plugins.clear();
-		pluginInfos.clear();
-		
-		pluginClassLoader = null;
 	}
 	
-	protected void load() {
-		List<I> infos = findPlugins();
-		infos = dependencySort(infos);
-		pluginInfos.addAll(infos);
-		pluginClassLoader = createClassLoader(pluginInfos);
-		
-		pluginInfos.iterate(pluginInfo -> {
-			if (shouldEnable(pluginInfo)) {
-				P plugin = loadPlugin(pluginClassLoader, pluginInfo);
-				if (plugin != null) {
-					try {
-						setupClassLoaderProviders(plugin);
-						setupRequiredDependencyFields(plugin);
-						plugin.onLoad();
-						plugins.add(plugin);
-						onPluginLoad(plugin);
-					} catch (Exception e) {
-						throw new UnexpectedException(e);
-					}
+	protected void loadAll() {
+		plugins.writeOperation(plugins -> {
+			List<I> infos = findPlugins();
+			pluginInfos.addAll(infos);
+			pluginClassLoader = createClassLoader(pluginInfos);
+
+			for (I pluginInfo : infos) {
+				load(pluginInfo);
+			}
+
+			plugins.forEach(this::setupOptionalDependencyFields);
+			plugins.forEach(Plugin::onAllPluginsLoaded);
+		});
+	}
+
+	public void load(I pluginInfo) {
+		load(pluginInfo, true);
+	}
+
+	public void load(I pluginInfo, boolean withDependencies) {
+		plugins.writeOperation(plugins -> {
+			if (getPlugin(pluginInfo) != null)
+				return;
+
+			for (String dependency : pluginInfo.dependsOn()) {
+				if (getPlugin(dependency) == null) {
+					if (withDependencies)
+						load(getPluginInfo(dependency), true);
+					else
+						throw new IllegalStateException(String.format(
+								"Plugin `%s` cannot be loaded without loading plugin `%s`.",
+								pluginInfo.packageName(),
+								dependency
+						));
 				}
 			}
+			loadInternal(pluginInfo);
 		});
-		
-		plugins.iterate(plugin -> {
-			setupOptionalDependencyFields(plugin);
+	}
+
+	private void loadInternal(I pluginInfo) {
+		if (shouldEnable(pluginInfo)) {
+			P plugin = loadPlugin(pluginClassLoader, pluginInfo);
+			if (plugin != null) {
+				try {
+					setupClassLoaderProviders(plugin);
+					setupRequiredDependencyFields(plugin);
+					plugin.onLoad();
+					plugins.add(plugin);
+					onPluginLoad(plugin);
+				} catch (Exception e) {
+					throw new UnexpectedException(e);
+				}
+			}
+		}
+	}
+
+	public void unload(P plugin) {
+		unload(plugin, true);
+	}
+
+	public void unload(P plugin, boolean withDependants) {
+		plugins.writeOperation(plugins -> {
+			for (P anyPlugin : plugins) {
+				if (anyPlugin == plugin)
+					continue;
+				if (anyPlugin.loadedDependencies.contains(plugin)) {
+					if (withDependants)
+						unload(anyPlugin, true);
+					else
+						throw new IllegalStateException(String.format(
+								"Plugin `%s` cannot be unloaded without unloading plugin `%s`.",
+								plugin.info.packageName(),
+								anyPlugin.info.packageName()
+						));
+				}
+			}
+			unloadInternal(plugin);
 		});
-		
-		plugins.iterate(plugin -> {
-			plugin.onAllPluginsLoaded();
-		});
+	}
+
+	private void unloadInternal(P plugin) {
+		plugin.onUnload();
+		onPluginUnload(plugin);
 	}
 	
 	protected void onPluginLoad(P plugin) {
@@ -118,12 +171,11 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 	@SuppressWarnings("unchecked")
 	protected P loadPlugin(ClassLoader classLoader, I info) {
 		try {
-			ClassLoader cl = classLoader;
 			String infoClassLoader = info.classLoader();
 			if (!infoClassLoader.equals("default"))
-				customClassLoaders.computeIfAbsent(infoClassLoader, key -> customClassLoaderProviders.get(key).call(cl, createURLArray(pluginInfos)));
+				customClassLoaders.computeIfAbsent(infoClassLoader, key -> customClassLoaderProviders.get(key).call(classLoader, createURLArray(pluginInfos)));
 			
-			Class<?> clazz = cl.loadClass(info.baseClass());
+			Class<?> clazz = classLoader.loadClass(info.baseClass());
 			for (Constructor<?> ctor : clazz.getConstructors()) {
 				Class<?>[] params = ctor.getParameterTypes();
 				if (params.length == 2 && getClass().isAssignableFrom(params[0]) && params[1] == pluginInfoClass)
@@ -185,7 +237,7 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 				Plugin.Dependency dependencyAnnotation = field.getAnnotation(Plugin.Dependency.class);
 				if (dependencyAnnotation != null) {
 					if (!dependencyAnnotation.value().equals("")) {
-						P dependency = getPluginWithPackageName(dependencyAnnotation.value());
+						P dependency = getPlugin(dependencyAnnotation.value());
 						if (dependency != null) {
 							field.setAccessible(true);
 							field.set(plugin, dependency);
@@ -201,7 +253,7 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 	
 	@SuppressWarnings("unchecked")
 	public <P2> P2 getPluginWithClass(Class<P2> clazz) {
-		return (P2)plugins.filterFirst(plugin -> clazz.isInstance(plugin));
+		return (P2)plugins.filterFirst(clazz::isInstance);
 	}
 	
 	@SuppressWarnings("unchecked")
@@ -213,10 +265,18 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		});
 		return ret;
 	}
+
+	public I getPluginInfo(String packageName) {
+		return pluginInfos.filterFirst(pluginInfo -> pluginInfo.packageName().equals(packageName));
+	}
 	
 	@SuppressWarnings("unchecked")
-	public <P2 extends P> P2 getPluginWithPackageName(String name) {
-		return (P2)plugins.filterFirst(plugin -> plugin.info.packageName().equals(name));
+	public <P2 extends P> P2 getPlugin(String packageName) {
+		return (P2)plugins.filterFirst(plugin -> plugin.info.packageName().equals(packageName));
+	}
+
+	public <P2 extends P> P2 getPlugin(PluginInfo pluginInfo) {
+		return getPlugin(pluginInfo.packageName());
 	}
 
 	@SuppressWarnings("unchecked")
@@ -244,40 +304,6 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		}
 		
 		return infos;
-	}
-	
-	protected List<I> dependencySort(List<I> input) {
-		input = new ArrayList<>(input);
-		List<I> output = new ArrayList<>(input.size());
-		List<String> loadedPackageNames = new ArrayList<>(input.size());
-		
-		while (!input.isEmpty()) {
-			int oldSize = input.size();
-			
-			for (int i = 0; i < input.size(); i++) {
-				I info = input.get(i);
-				
-				boolean allDependenciesLoaded = true;
-				for (String dependency : info.dependsOn()) {
-					if (!loadedPackageNames.contains(dependency)) {
-						allDependenciesLoaded = false;
-						break;
-					}
-				}
-				if (allDependenciesLoaded) {
-					loadedPackageNames.add(info.packageName());
-					output.add(info);
-					input.remove(i--);
-				}
-			}
-			
-			if (oldSize == input.size()) {
-				//TODO: log plugins with missing dependencies (the ones left in $input)
-				break;
-			}
-		}
-		
-		return output;
 	}
 	
 	protected URL[] createURLArray(ReadWriteList<I> infos) {

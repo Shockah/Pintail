@@ -12,7 +12,7 @@ repositories {
 
 dependencies {
 	compile group: 'commons-io', name: 'commons-io', version: '2.5'
-	compile 'com.github.Shockah:pl.shockah.json:1.0'
+	compile 'com.github.Shockah:pl.shockah.json:1.0.2'
 }
 
 task sourcesJar(type: Jar, dependsOn: classes) {
