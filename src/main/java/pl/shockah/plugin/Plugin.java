@@ -1,5 +1,6 @@
 package pl.shockah.plugin;
 
+import javax.annotation.Nonnull;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -8,11 +9,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Plugin<I extends PluginInfo, M extends PluginManager<I, M, P>, P extends Plugin<I, M, P>> {
-	public final M manager;
-	public final I info;
-	final List<P> loadedDependencies = new ArrayList<>();
+	@Nonnull public final M manager;
+	@Nonnull public final I info;
+	@Nonnull final List<P> loadedDependencies = new ArrayList<>();
 	
-	public Plugin(M manager, I info) {
+	public Plugin(@Nonnull M manager, @Nonnull I info) {
 		this.manager = manager;
 		this.info = info;
 	}
@@ -23,10 +24,10 @@ public class Plugin<I extends PluginInfo, M extends PluginManager<I, M, P>, P ex
 	protected void onUnload() {
 	}
 	
-	protected void onDependencyLoaded(P plugin) {
+	protected void onDependencyLoaded(@Nonnull P plugin) {
 	}
 	
-	protected void onDependencyUnloaded(P plugin) {
+	protected void onDependencyUnloaded(@Nonnull P plugin) {
 	}
 	
 	protected void onAllPluginsLoaded() {

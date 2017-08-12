@@ -2,48 +2,57 @@ package pl.shockah.plugin;
 
 import pl.shockah.json.JSONObject;
 
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.net.URL;
 import java.util.Collections;
 import java.util.List;
 
 public class PluginInfo {
-	public final JSONObject json;
-	public final URL url;
+	@Nonnull public final JSONObject json;
+	@Nonnull public final URL url;
 
-	public PluginInfo(JSONObject json, URL url) {
+	public PluginInfo(@Nonnull JSONObject json, @Nonnull URL url) {
 		this.json = json;
 		this.url = url;
 	}
 
-	public String packageName() {
+	@Nonnull
+	public String getPackageName() {
 		return json.getString("packageName");
 	}
 
-	public String baseClass() {
+	@Nonnull
+	public String getBaseClass() {
 		return json.getString("baseClass");
 	}
 
-	public List<String> dependsOn() {
+	@Nonnull
+	public List<String> getDependencies() {
 		return Collections.unmodifiableList(json.getListOrEmpty("dependsOn").ofStrings());
 	}
 
-	public boolean enabledByDefault() {
+	public boolean isEnabledByDefault() {
 		return json.getBool("enabledByDefault", true);
 	}
 
-	public String name() {
-		return json.getString("name", packageName());
+	@Nonnull
+	public String getName() {
+		return json.getString("name", getPackageName());
 	}
 
-	public String author() {
-		return json.getString("author", null);
+	@Nullable
+	public String getAuthor() {
+		return json.getOptionalString("author");
 	}
 
-	public String description() {
-		return json.getString("description", null);
+	@Nullable
+	public String getDescription() {
+		return json.getOptionalString("description");
 	}
 
-	public String classLoader() {
+	@Nonnull
+	public String getClassLoader() {
 		return json.getString("classLoader", "default");
 	}
 }

@@ -12,7 +12,8 @@ repositories {
 
 dependencies {
 	compile group: 'commons-io', name: 'commons-io', version: '2.5'
-	compile 'com.github.Shockah:pl.shockah.json:1.0.2'
+	compile 'com.github.Shockah:pl.shockah.json:1.0.3'
+	compile 'com.google.code.findbugs:jsr305:3.0.2'
 }
 
 task sourcesJar(type: Jar, dependsOn: classes) {
