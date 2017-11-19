@@ -11,14 +11,11 @@ import java.util.List;
 public class Plugin<I extends PluginInfo, M extends PluginManager<I, M, P>, P extends Plugin<I, M, P>> {
 	@Nonnull public final M manager;
 	@Nonnull public final I info;
-	@Nonnull final List<P> loadedDependencies = new ArrayList<>();
+	@Nonnull protected final List<P> loadedDependencies = new ArrayList<>();
 	
 	public Plugin(@Nonnull M manager, @Nonnull I info) {
 		this.manager = manager;
 		this.info = info;
-	}
-	
-	protected void onLoad() {
 	}
 	
 	protected void onUnload() {
@@ -32,11 +29,16 @@ public class Plugin<I extends PluginInfo, M extends PluginManager<I, M, P>, P ex
 	
 	protected void onAllPluginsLoaded() {
 	}
-	
+
+	@Retention(RetentionPolicy.RUNTIME)
+	@Target(ElementType.PARAMETER)
+	public @interface RequiredDependency {
+	}
+
 	@Retention(RetentionPolicy.RUNTIME)
 	@Target(ElementType.FIELD)
-	public @interface Dependency {
-		String value() default "";
+	public @interface OptionalDependency {
+		String value();
 	}
 	
 	@Retention(RetentionPolicy.RUNTIME)

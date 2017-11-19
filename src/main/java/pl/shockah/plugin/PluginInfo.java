@@ -17,18 +17,15 @@ public class PluginInfo {
 		this.url = url;
 	}
 
-	@Nonnull
-	public String getPackageName() {
+	@Nonnull public String getPackageName() {
 		return json.getString("packageName");
 	}
 
-	@Nonnull
-	public String getBaseClass() {
+	@Nonnull public String getBaseClass() {
 		return json.getString("baseClass");
 	}
 
-	@Nonnull
-	public List<String> getDependencies() {
+	@Nonnull public List<String> getDependencies() {
 		return Collections.unmodifiableList(json.getListOrEmpty("dependsOn").ofStrings());
 	}
 
@@ -36,23 +33,19 @@ public class PluginInfo {
 		return json.getBool("enabledByDefault", true);
 	}
 
-	@Nonnull
-	public String getName() {
+	@Nonnull public String getName() {
 		return json.getString("name", getPackageName());
 	}
 
-	@Nullable
-	public String getAuthor() {
+	@Nullable public String getAuthor() {
 		return json.getOptionalString("author");
 	}
 
-	@Nullable
-	public String getDescription() {
+	@Nullable public String getDescription() {
 		return json.getOptionalString("description");
 	}
 
-	@Nonnull
-	public String getClassLoader() {
+	@Nonnull public String getClassLoader() {
 		return json.getString("classLoader", "default");
 	}
 }

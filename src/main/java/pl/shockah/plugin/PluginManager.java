@@ -11,10 +11,7 @@ import pl.shockah.util.func.Func2;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
+import java.lang.reflect.*;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
@@ -28,7 +25,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P>, P extends Plugin<I, M, P>> {
-	public static final Path PLUGINS_PATH = Paths.get("plugins");
+	@Nonnull public static final Path PLUGINS_PATH = Paths.get("plugins");
 
 	@Nonnull protected final Class<I> pluginInfoClass;
 	@Nonnull protected final Class<P> pluginClass;
@@ -51,8 +48,7 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		this.pluginsPath = pluginsPath;
 	}
 
-	@Nonnull
-	public Path getPluginPath() {
+	@Nonnull public Path getPluginPath() {
 		return pluginsPath;
 	}
 	
@@ -122,15 +118,12 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		});
 	}
 
-	@Nullable
-	private P loadInternal(@Nonnull I pluginInfo) {
+	@Nullable private P loadInternal(@Nonnull I pluginInfo) {
 		if (shouldEnable(pluginInfo)) {
 			P plugin = loadPlugin(pluginClassLoader, pluginInfo);
 			if (plugin != null) {
 				try {
 					setupClassLoaderProviders(plugin);
-					setupRequiredDependencyFields(plugin);
-					plugin.onLoad();
 					plugins.add(plugin);
 					onPluginLoad(plugin);
 				} catch (Exception e) {
@@ -180,18 +173,31 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 	}
 	
 	@SuppressWarnings("unchecked")
-	@Nullable
-	protected P loadPlugin(@Nonnull ClassLoader classLoader, @Nonnull I info) {
+	@Nullable protected P loadPlugin(@Nonnull ClassLoader classLoader, @Nonnull I info) {
 		try {
 			String infoClassLoader = info.getClassLoader();
 			if (!infoClassLoader.equals("default"))
 				customClassLoaders.computeIfAbsent(infoClassLoader, key -> customClassLoaderProviders.get(key).call(classLoader, createURLArray(pluginInfos)));
 			
 			Class<?> clazz = classLoader.loadClass(info.getBaseClass());
-			for (Constructor<?> ctor : clazz.getConstructors()) {
+			L: for (Constructor<?> ctor : clazz.getConstructors()) {
 				Class<?>[] params = ctor.getParameterTypes();
-				if (params.length == 2 && getClass().isAssignableFrom(params[0]) && params[1] == pluginInfoClass)
-					return (P)ctor.newInstance(this, info);
+				if (params.length >= 2 && getClass().isAssignableFrom(params[0]) && params[1] == pluginInfoClass) {
+					AnnotatedType[] annotatedTypes = ctor.getAnnotatedParameterTypes();
+					Object[] ctorArgs = new Object[params.length];
+					ctorArgs[0] = this;
+					ctorArgs[1] = info;
+					for (int i = 2; i < params.length; i++) {
+						Plugin.RequiredDependency dependencyAnnotation = annotatedTypes[i].getAnnotation(Plugin.RequiredDependency.class);
+						if (dependencyAnnotation == null)
+							continue L;
+						Object dependency = getPluginWithClass(params[i]);
+						if (dependency == null)
+							continue L;
+						ctorArgs[i] = dependency;
+					}
+					return (P)ctor.newInstance(ctorArgs);
+				}
 			}
 			throw new NoSuchMethodException("Missing plugin constructor.");
 		} catch (Exception e) {
@@ -219,43 +225,18 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		}
 	}
 	
-	@SuppressWarnings("unchecked")
-	protected void setupRequiredDependencyFields(@Nonnull P plugin) {
-		for (Field field : plugin.getClass().getDeclaredFields()) {
-			try {
-				Plugin.Dependency dependencyAnnotation = field.getAnnotation(Plugin.Dependency.class);
-				if (dependencyAnnotation != null) {
-					if (dependencyAnnotation.value().equals("")) {
-						Class<? extends P> clazz = (Class<? extends P>)field.getType();
-						if (clazz == pluginClass)
-							continue;
-						P dependency = getPluginWithClass(clazz);
-						if (dependency != null) {
-							field.setAccessible(true);
-							field.set(plugin, dependency);
-							plugin.onDependencyLoaded(plugin);
-						}
-					}
-				}
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		}
-	}
-	
 	protected void setupOptionalDependencyFields(@Nonnull P plugin) {
 		for (Field field : plugin.getClass().getDeclaredFields()) {
 			try {
-				Plugin.Dependency dependencyAnnotation = field.getAnnotation(Plugin.Dependency.class);
-				if (dependencyAnnotation != null) {
-					if (!dependencyAnnotation.value().equals("")) {
-						P dependency = getPlugin(dependencyAnnotation.value());
-						if (dependency != null) {
-							field.setAccessible(true);
-							field.set(plugin, dependency);
-							plugin.onDependencyLoaded(plugin);
-						}
-					}
+				Plugin.OptionalDependency dependencyAnnotation = field.getAnnotation(Plugin.OptionalDependency.class);
+				if (dependencyAnnotation == null)
+					continue;
+
+				P dependency = getPlugin(dependencyAnnotation.value());
+				if (dependency != null) {
+					field.setAccessible(true);
+					field.set(plugin, dependency);
+					plugin.onDependencyLoaded(plugin);
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -264,14 +245,12 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 	}
 	
 	@SuppressWarnings("unchecked")
-	@Nullable
-	public <P2> P2 getPluginWithClass(@Nonnull Class<P2> clazz) {
+	@Nullable public <P2> P2 getPluginWithClass(@Nonnull Class<P2> clazz) {
 		return (P2)plugins.filterFirst(clazz::isInstance);
 	}
 	
 	@SuppressWarnings("unchecked")
-	@Nonnull
-	public <P2> List<P2> getPluginsWithClass(@Nonnull Class<P2> clazz) {
+	@Nonnull public <P2> List<P2> getPluginsWithClass(@Nonnull Class<P2> clazz) {
 		List<P2> ret = new ArrayList<>();
 		plugins.iterate(plugin -> {
 			if (clazz.isInstance(plugin))
@@ -280,25 +259,21 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		return ret;
 	}
 
-	@Nullable
-	public I getPluginInfo(@Nonnull String packageName) {
+	@Nullable public I getPluginInfo(@Nonnull String packageName) {
 		return pluginInfos.filterFirst(pluginInfo -> pluginInfo.getPackageName().equals(packageName));
 	}
 	
 	@SuppressWarnings("unchecked")
-	@Nullable
-	public <P2 extends P> P2 getPlugin(@Nonnull String packageName) {
+	@Nullable public <P2 extends P> P2 getPlugin(@Nonnull String packageName) {
 		return (P2)plugins.filterFirst(plugin -> plugin.info.getPackageName().equals(packageName));
 	}
 
-	@Nullable
-	public <P2 extends P> P2 getPlugin(@Nonnull PluginInfo pluginInfo) {
+	@Nullable public <P2 extends P> P2 getPlugin(@Nonnull PluginInfo pluginInfo) {
 		return getPlugin(pluginInfo.getPackageName());
 	}
 
 	@SuppressWarnings("unchecked")
-	@Nonnull
-	protected List<I> findPlugins() {
+	@Nonnull protected List<I> findPlugins() {
 		List<I> infos = new ArrayList<>();
 		
 		try {
@@ -324,15 +299,13 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		return infos;
 	}
 
-	@Nonnull
-	protected URL[] createURLArray(@Nonnull ReadWriteList<I> infos) {
+	@Nonnull protected URL[] createURLArray(@Nonnull ReadWriteList<I> infos) {
 		List<URL> urls = new ArrayList<>();
 		infos.iterate(info -> urls.add(info.url));
 		return urls.toArray(new URL[0]);
 	}
 
-	@Nonnull
-	protected ClassLoader createClassLoader(@Nonnull ReadWriteList<I> infos) {
+	@Nonnull protected ClassLoader createClassLoader(@Nonnull ReadWriteList<I> infos) {
 		return new URLClassLoader(createURLArray(infos));
 	}
 	
