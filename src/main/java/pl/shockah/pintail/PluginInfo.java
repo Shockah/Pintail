@@ -1,6 +1,6 @@
 package pl.shockah.pintail;
 
-import pl.shockah.json.JSONObject;
+import pl.shockah.jay.JSONObject;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;

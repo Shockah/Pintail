@@ -1,8 +1,8 @@
 package pl.shockah.pintail;
 
 import org.apache.commons.io.IOUtils;
-import pl.shockah.json.JSONObject;
-import pl.shockah.json.JSONParser;
+import pl.shockah.jay.JSONObject;
+import pl.shockah.jay.JSONParser;
 import pl.shockah.util.FileUtils;
 import pl.shockah.util.ReadWriteList;
 import pl.shockah.util.ReadWriteMap;
