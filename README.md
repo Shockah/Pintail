@@ -1,2 +1,3 @@
-# io.shockah.plugin
-Generic plugin management library
+# Pintail
+
+Generic plugin management library.

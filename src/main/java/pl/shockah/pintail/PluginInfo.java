@@ -1,4 +1,4 @@
-package pl.shockah.plugin;
+package pl.shockah.pintail;
 
 import pl.shockah.json.JSONObject;
 
@@ -14,7 +14,7 @@ public class PluginInfo {
 
 	protected static void checkRequiredKey(@Nonnull JSONObject json, @Nonnull String key) {
 		if (!json.containsKey(key))
-			throw new IllegalArgumentException(String.format("Key `%s` in a `plugin.json` file is required.", key));
+			throw new IllegalArgumentException(String.format("Key `%s` in a `pintail.json` file is required.", key));
 	}
 
 	public PluginInfo(@Nonnull JSONObject json, @Nonnull URL url) {

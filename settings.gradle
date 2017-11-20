@@ -16,4 +16,4 @@ include 'api'
 include 'services:webservice'
 */
 
-rootProject.name = 'pl.shockah.plugin'
+rootProject.name = 'Pintail'

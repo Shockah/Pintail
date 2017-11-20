@@ -1,4 +1,4 @@
-package pl.shockah.plugin;
+package pl.shockah.pintail;
 
 import javax.annotation.Nonnull;
 import java.lang.annotation.ElementType;
