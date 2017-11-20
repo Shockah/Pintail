@@ -12,9 +12,17 @@ public class PluginInfo {
 	@Nonnull public final JSONObject json;
 	@Nonnull public final URL url;
 
+	protected static void checkRequiredKey(@Nonnull JSONObject json, @Nonnull String key) {
+		if (!json.containsKey(key))
+			throw new IllegalArgumentException(String.format("Key `%s` in a `plugin.json` file is required.", key));
+	}
+
 	public PluginInfo(@Nonnull JSONObject json, @Nonnull URL url) {
 		this.json = json;
 		this.url = url;
+
+		checkRequiredKey(json, "packageName");
+		checkRequiredKey(json, "baseClass");
 	}
 
 	@Nonnull public String getPackageName() {

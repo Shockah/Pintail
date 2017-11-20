@@ -21,17 +21,18 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P>, P extends Plugin<I, M, P>> {
-	@Nonnull public static final Path PLUGINS_PATH = Paths.get("plugins");
+	@Nonnull public static final Path DEFAULT_PLUGINS_PATH = Paths.get("plugins");
 
 	@Nonnull protected final Class<I> pluginInfoClass;
 	@Nonnull protected final Class<P> pluginClass;
 	@Nonnull protected final Path pluginsPath;
 	
-	public ClassLoader pluginClassLoader = null;
+	@Nullable protected ClassLoader pluginClassLoader = null;
 	@Nonnull public final ReadWriteList<I> pluginInfos = new ReadWriteList<>(new ArrayList<>());
 	@Nonnull public final ReadWriteList<P> plugins = new ReadWriteList<>(new ArrayList<>());
 
@@ -39,7 +40,7 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 	@Nonnull protected final ReadWriteMap<String, URLClassLoader> customClassLoaders = new ReadWriteMap<>(new HashMap<>());
 	
 	public PluginManager(@Nonnull Class<I> pluginInfoClass, @Nonnull Class<P> pluginClass) {
-		this(pluginInfoClass, pluginClass, PLUGINS_PATH);
+		this(pluginInfoClass, pluginClass, DEFAULT_PLUGINS_PATH);
 	}
 	
 	public PluginManager(@Nonnull Class<I> pluginInfoClass, @Nonnull Class<P> pluginClass, @Nonnull Path pluginsPath) {
@@ -52,12 +53,12 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		return pluginsPath;
 	}
 	
-	public void reloadAll() {
+	public synchronized void reloadAll() {
 		unloadAll();
 		loadAll();
 	}
 	
-	protected void unloadAll() {
+	protected synchronized void unloadAll() {
 		plugins.writeOperation(plugins -> {
 			List<P> reversed = new ArrayList<>(plugins);
 			Collections.reverse(reversed);
@@ -73,29 +74,30 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		});
 	}
 	
-	protected void loadAll() {
+	protected synchronized void loadAll() {
 		plugins.writeOperation(plugins -> {
 			List<I> infos = findPlugins();
 			pluginInfos.addAll(infos);
-			pluginClassLoader = createClassLoader(pluginInfos);
+			pluginClassLoader = createClassLoader(new ArrayList<>(pluginInfos));
 
 			for (I pluginInfo : infos) {
 				load(pluginInfo);
 			}
 
-			plugins.forEach(this::setupOptionalDependencyFields);
+			plugins.forEach(this::setupAllOptionalDependencyFields);
 			plugins.forEach(Plugin::onAllPluginsLoaded);
 		});
 	}
 
-	public void load(@Nonnull I pluginInfo) {
-		load(pluginInfo, true);
+	@Nonnull public synchronized P load(@Nonnull I pluginInfo) {
+		return load(pluginInfo, true);
 	}
 
-	public void load(@Nonnull I pluginInfo, boolean withDependencies) {
-		plugins.writeOperation(plugins -> {
-			if (getPlugin(pluginInfo) != null)
-				return;
+	@Nonnull public synchronized P load(@Nonnull I pluginInfo, boolean withDependencies) {
+		return plugins.writeOperation(plugins -> {
+			P alreadyLoadedPlugin = getPlugin(pluginInfo);
+			if (alreadyLoadedPlugin != null)
+				return alreadyLoadedPlugin;
 
 			for (String dependency : pluginInfo.getDependencies()) {
 				if (getPlugin(dependency) == null) {
@@ -114,17 +116,20 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 					));
 				}
 			}
-			loadInternal(pluginInfo);
+			return loadInternal(pluginInfo);
 		});
 	}
 
-	@Nullable private P loadInternal(@Nonnull I pluginInfo) {
+	@Nullable private synchronized P loadInternal(@Nonnull I pluginInfo) {
 		if (shouldEnable(pluginInfo)) {
+			if (pluginClassLoader == null)
+				throw new IllegalStateException();
 			P plugin = loadPlugin(pluginClassLoader, pluginInfo);
 			if (plugin != null) {
 				try {
 					setupClassLoaderProviders(plugin);
 					plugins.add(plugin);
+					setupOptionalDependencyFields(plugin);
 					onPluginLoad(plugin);
 				} catch (Exception e) {
 					throw new UnexpectedException(e);
@@ -135,31 +140,34 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		return null;
 	}
 
-	public void unload(@Nonnull P plugin) {
+	public synchronized void unload(@Nonnull P plugin) {
 		unload(plugin, true);
 	}
 
-	public void unload(@Nonnull P plugin, boolean withDependants) {
-		plugins.writeOperation(plugins -> {
-			for (P anyPlugin : plugins) {
-				if (anyPlugin == plugin)
-					continue;
-				if (anyPlugin.loadedDependencies.contains(plugin)) {
-					if (withDependants)
-						unload(anyPlugin, true);
-					else
-						throw new IllegalStateException(String.format(
-								"Plugin `%s` cannot be unloaded without unloading plugin `%s`.",
-								plugin.info.getPackageName(),
-								anyPlugin.info.getPackageName()
-						));
-				}
-			}
-			unloadInternal(plugin);
-		});
+	public synchronized void unload(@Nonnull P plugin, boolean withDependants) {
+		List<P> requiredDependants = new ArrayList<>(plugin.requiredDependants);
+		if (!requiredDependants.isEmpty() && !withDependants)
+			throw new IllegalStateException(String.format(
+					"Plugin `%s` cannot be unloaded without unloading plugins %s first.",
+					plugin.info.getPackageName(),
+					requiredDependants.stream().map(dependent -> String.format("`%s`", dependent.info.getPackageName())).collect(Collectors.joining(", "))
+			));
+
+		List<P> optionalDependants = new ArrayList<>(plugin.optionalDependants);
+		for (P dependant : optionalDependants) {
+			dependant.loadedOptionalDependencies.remove(plugin);
+			dependant.onDependencyUnloaded(plugin.info);
+			plugin.optionalDependants.remove(dependant);
+		}
+
+		for (P dependant : requiredDependants) {
+			unload(dependant, true);
+		}
+
+		unloadInternal(plugin);
 	}
 
-	private void unloadInternal(@Nonnull P plugin) {
+	private synchronized void unloadInternal(@Nonnull P plugin) {
 		plugin.onUnload();
 		onPluginUnload(plugin);
 	}
@@ -173,7 +181,7 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 	}
 	
 	@SuppressWarnings("unchecked")
-	@Nullable protected P loadPlugin(@Nonnull ClassLoader classLoader, @Nonnull I info) {
+	@Nullable protected synchronized P loadPlugin(@Nonnull ClassLoader classLoader, @Nonnull I info) {
 		try {
 			String infoClassLoader = info.getClassLoader();
 			if (!infoClassLoader.equals("default"))
@@ -187,16 +195,25 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 					Object[] ctorArgs = new Object[params.length];
 					ctorArgs[0] = this;
 					ctorArgs[1] = info;
+					List<P> requiredDependencies = new ArrayList<>();
+
 					for (int i = 2; i < params.length; i++) {
 						Plugin.RequiredDependency dependencyAnnotation = annotatedTypes[i].getAnnotation(Plugin.RequiredDependency.class);
 						if (dependencyAnnotation == null)
 							continue L;
-						Object dependency = getPluginWithClass(params[i]);
+						P dependency = (P)getPluginWithClass(params[i]);
 						if (dependency == null)
 							continue L;
 						ctorArgs[i] = dependency;
+						requiredDependencies.add(dependency);
 					}
-					return (P)ctor.newInstance(ctorArgs);
+
+					P plugin = (P)ctor.newInstance(ctorArgs);
+					plugin.loadedRequiredDependencies.addAll(requiredDependencies);
+					for (P dependency : requiredDependencies) {
+						dependency.requiredDependants.add(plugin);
+					}
+					return plugin;
 				}
 			}
 			throw new NoSuchMethodException("Missing plugin constructor.");
@@ -206,7 +223,7 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		}
 	}
 	
-	protected void setupClassLoaderProviders(@Nonnull P plugin) {
+	protected synchronized void setupClassLoaderProviders(@Nonnull P plugin) {
 		for (Method method : plugin.getClass().getDeclaredMethods()) {
 			try {
 				Plugin.ClassLoaderProvider classLoaderProviderAnnotation = method.getAnnotation(Plugin.ClassLoaderProvider.class);
@@ -224,8 +241,32 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 			}
 		}
 	}
+
+	protected synchronized void setupOptionalDependencyFields(@Nonnull P newlyLoadedPlugin) {
+		plugins.iterate(plugin -> {
+			for (Field field : plugin.getClass().getDeclaredFields()) {
+				try {
+					Plugin.OptionalDependency dependencyAnnotation = field.getAnnotation(Plugin.OptionalDependency.class);
+					if (dependencyAnnotation == null)
+						continue;
+
+					if (dependencyAnnotation.value().equals(newlyLoadedPlugin.info.getPackageName())) {
+						field.setAccessible(true);
+						if (field.get(plugin) == null) {
+							field.set(plugin, newlyLoadedPlugin);
+							plugin.loadedOptionalDependencies.add(newlyLoadedPlugin);
+							newlyLoadedPlugin.optionalDependants.add(plugin);
+							plugin.onDependencyLoaded(newlyLoadedPlugin);
+						}
+					}
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		});
+	}
 	
-	protected void setupOptionalDependencyFields(@Nonnull P plugin) {
+	protected synchronized void setupAllOptionalDependencyFields(@Nonnull P plugin) {
 		for (Field field : plugin.getClass().getDeclaredFields()) {
 			try {
 				Plugin.OptionalDependency dependencyAnnotation = field.getAnnotation(Plugin.OptionalDependency.class);
@@ -235,8 +276,12 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 				P dependency = getPlugin(dependencyAnnotation.value());
 				if (dependency != null) {
 					field.setAccessible(true);
-					field.set(plugin, dependency);
-					plugin.onDependencyLoaded(plugin);
+					if (field.get(plugin) == null) {
+						field.set(plugin, dependency);
+						plugin.loadedOptionalDependencies.add(dependency);
+						dependency.optionalDependants.add(plugin);
+						plugin.onDependencyLoaded(dependency);
+					}
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -299,13 +344,11 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 		return infos;
 	}
 
-	@Nonnull protected URL[] createURLArray(@Nonnull ReadWriteList<I> infos) {
-		List<URL> urls = new ArrayList<>();
-		infos.iterate(info -> urls.add(info.url));
-		return urls.toArray(new URL[0]);
+	@Nonnull protected URL[] createURLArray(@Nonnull List<I> infos) {
+		return infos.stream().map(info -> info.url).toArray(URL[]::new);
 	}
 
-	@Nonnull protected ClassLoader createClassLoader(@Nonnull ReadWriteList<I> infos) {
+	@Nonnull protected ClassLoader createClassLoader(@Nonnull List<I> infos) {
 		return new URLClassLoader(createURLArray(infos));
 	}
 	

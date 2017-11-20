@@ -11,7 +11,11 @@ import java.util.List;
 public class Plugin<I extends PluginInfo, M extends PluginManager<I, M, P>, P extends Plugin<I, M, P>> {
 	@Nonnull public final M manager;
 	@Nonnull public final I info;
-	@Nonnull protected final List<P> loadedDependencies = new ArrayList<>();
+
+	@Nonnull final List<P> loadedRequiredDependencies = new ArrayList<>();
+	@Nonnull final List<P> loadedOptionalDependencies = new ArrayList<>();
+	@Nonnull final List<P> requiredDependants = new ArrayList<>();
+	@Nonnull final List<P> optionalDependants = new ArrayList<>();
 	
 	public Plugin(@Nonnull M manager, @Nonnull I info) {
 		this.manager = manager;
@@ -24,7 +28,7 @@ public class Plugin<I extends PluginInfo, M extends PluginManager<I, M, P>, P ex
 	protected void onDependencyLoaded(@Nonnull P plugin) {
 	}
 	
-	protected void onDependencyUnloaded(@Nonnull P plugin) {
+	protected void onDependencyUnloaded(@Nonnull I info) {
 	}
 	
 	protected void onAllPluginsLoaded() {
