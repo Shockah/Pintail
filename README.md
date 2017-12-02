@@ -12,7 +12,7 @@ repositories {
 }
 
 dependencies {
-	compile 'com.github.Shockah:Pintail:1.6'
+	compile 'com.github.Shockah:Pintail:1.6.1'
 }
 ```
 
@@ -65,7 +65,7 @@ plugin.json:
 
 Required dependencies have to be defined in the plugin.json file.
 
-```json
+```
 {
 	// ...
 	"dependsOn": [
