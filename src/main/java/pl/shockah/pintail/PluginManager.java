@@ -110,7 +110,7 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 					}
 
 					throw new IllegalStateException(String.format(
-							"Plugin `%s` cannot be loaded without loading pintail `%s`.",
+							"Plugin `%s` cannot be loaded without loading plugin `%s`.",
 							pluginInfo.getPackageName(),
 							dependency
 					));
@@ -173,11 +173,11 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 	}
 	
 	protected void onPluginLoad(@Nonnull P plugin) {
-		System.out.println(String.format("Loaded pintail: %s", plugin.info.getPackageName()));
+		System.out.println(String.format("Loaded plugin: %s", plugin.info.getPackageName()));
 	}
 	
 	protected void onPluginUnload(@Nonnull P plugin) {
-		System.out.println(String.format("Unloaded pintail: %s", plugin.info.getPackageName()));
+		System.out.println(String.format("Unloaded plugin: %s", plugin.info.getPackageName()));
 	}
 	
 	@SuppressWarnings("unchecked")
@@ -216,7 +216,7 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 					return plugin;
 				}
 			}
-			throw new NoSuchMethodException("Missing pintail constructor.");
+			throw new NoSuchMethodException("Missing plugin constructor.");
 		} catch (Exception e) {
 			e.printStackTrace();
 			return null;
@@ -326,7 +326,7 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 				Path tmpPath = FileUtils.copyAsTrueTempFile(path);
 				
 				try (ZipFile zf = new ZipFile(tmpPath.toFile())) {
-					ZipEntry ze = zf.getEntry("pintail.json");
+					ZipEntry ze = zf.getEntry("plugin.json");
 					if (ze == null)
 						continue;
 					
