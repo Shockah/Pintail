@@ -11,16 +11,14 @@ import pl.shockah.util.func.Func2;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.*;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -191,14 +189,18 @@ public class PluginManager<I extends PluginInfo, M extends PluginManager<I, M, P
 			L: for (Constructor<?> ctor : clazz.getConstructors()) {
 				Class<?>[] params = ctor.getParameterTypes();
 				if (params.length >= 2 && getClass().isAssignableFrom(params[0]) && params[1] == pluginInfoClass) {
-					AnnotatedType[] annotatedTypes = ctor.getAnnotatedParameterTypes();
+					Annotation[][] parameterAnnotations = ctor.getParameterAnnotations();
 					Object[] ctorArgs = new Object[params.length];
 					ctorArgs[0] = this;
 					ctorArgs[1] = info;
 					List<P> requiredDependencies = new ArrayList<>();
 
 					for (int i = 2; i < params.length; i++) {
-						Plugin.RequiredDependency dependencyAnnotation = annotatedTypes[i].getAnnotation(Plugin.RequiredDependency.class);
+						Plugin.RequiredDependency dependencyAnnotation = Arrays.stream(parameterAnnotations[i])
+								.filter(annotation -> annotation instanceof Plugin.RequiredDependency)
+								.map(annotation -> (Plugin.RequiredDependency)annotation)
+								.findAny().orElse(null);
+
 						if (dependencyAnnotation == null)
 							continue L;
 						P dependency = (P)getPluginWithClass(params[i]);
